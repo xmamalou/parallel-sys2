@@ -22,6 +22,7 @@
 #include <vector>
 #include <utility>
 #include <charconv>
+#include <algorithm>
 
 #include <stdint.h>
 
@@ -30,15 +31,15 @@
 
 // --- FUNCTION DECLARATIONS --- //
 
-utility::Options read_args(int argc, char** argv);
+auto read_args(int argc, char** argv) -> utility::Options;
 
 // Commands
 
-void print_help(const utility::Options&);
+auto print_help(const utility::Options&) -> void;
 
 // --- FUNCTION DEFINITIONS --- //
 
-int main(int argc, char** argv) {
+auto main(int argc, char** argv) -> int {
   const auto options = read_args(argc, argv);
 
   const auto& command = reinterpret_cast<utility::Command>(options.command_p);
@@ -47,12 +48,12 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-utility::Options read_args(int argc, char** argv) {
+auto read_args(int argc, char** argv) -> utility::Options {
   using StringVector = std::vector<std::string_view>;
   StringVector arguments{ {std::string_view(argv[0])} };
 
-  for (uint32_t i{ 1 }; i < static_cast<uint32_t>(argc); i++){
-    arguments.push_back(std::string_view(argv[i]));
+  for (uint32_t i{ 1 }; i < static_cast<uint32_t>(argc); i++) {
+      arguments.push_back(std::string_view(argv[i]));
   }
 
   utility::Options options{
@@ -111,7 +112,7 @@ utility::Options read_args(int argc, char** argv) {
   return options;
 }
 
-void print_help(const utility::Options& options) {
+auto print_help(const utility::Options& options) -> void {
   std::cout << "\x1b[33m" <<
     R"(Parallel Systems Project 2 -- Christoforos-Marios Mamaloukas -- Parallel Systems Postgraduate Course -- NKUA
 -------------------------------------------------------------------------------------------------------------
