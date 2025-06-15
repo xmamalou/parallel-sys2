@@ -19,8 +19,10 @@
 
 #include "exercises.hxx"
 
-namespace exe {
-  auto game_of_life(const utility::Options&) -> void {
+#include <iostream>
+
+auto exe::game_of_life(const utility::Options& options) -> void {
+    std::cout << "You will run this game in " << options.nodes << " nodes\n";
+
     return;
-  }
 }
