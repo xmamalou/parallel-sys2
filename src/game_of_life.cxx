@@ -21,8 +21,8 @@
 
 #include <iostream>
 
-auto exe::game_of_life(const utility::Options& options) -> void {
+auto exe::game_of_life(const utility::Options& options) -> utility::ExerciseVariantReturn {
     std::cout << "You will run this game in " << options.nodes << " nodes\n";
 
-    return;
+    return utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE>{};
 }

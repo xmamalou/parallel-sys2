@@ -20,7 +20,7 @@
 #include "exercises.hxx"
 
 namespace exe {
-  auto game_of_life_async(const utility::Options&) -> void {
-    return;
+  auto game_of_life_async(const utility::Options&) -> utility::ExerciseVariantReturn {
+    return utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE_ASYNC>{};
   }
 }

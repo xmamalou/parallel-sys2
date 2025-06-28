@@ -21,92 +21,65 @@
 
 #include <iostream>
 #include <cmath>
+#include <random>
+#include <functional>
+#include <chrono>
 
 #include "mpi.h"
 
-auto exe::pi_monte_carlo(const utility::Options& options) -> void {
+using MCOptions = utility::ExerciseOptions<utility::Exercise::PI_MONTE_CARLO>;
+
+auto exe::pi_monte_carlo(const utility::Options& options) -> utility::ExerciseVariantReturn {
+    auto specifics{ std::get<utility::ExerciseOptions<utility::Exercise::PI_MONTE_CARLO>>(options.specifics) };
+    int32_t nodes{ 0 };
     int32_t rank{ 0 };
+    MPI_Comm_size(
+        MPI_COMM_WORLD,
+        &nodes);
     MPI_Comm_rank(
         MPI_COMM_WORLD,
         &rank);
 
     if ( rank == 0 ) {
-        std::cout << R"(
---- CALCULATE PI WITH MONTE CARLO METHOD ---
--> Number of nodes: )" << options.nodes << R"(
--> Number of total throws: )" << options.throws << R"(
+        std::cout << R"(--- CALCULATE PI WITH MONTE CARLO METHOD ---
+-> Number of nodes: )" << nodes << R"(
+-> Number of total throws: )" << specifics.throws << R"(
 ---------------------------------------------
 )";
     }
 
-    uint64_t my_throws{ options.throws/static_cast<uint32_t>(rank) };
+    auto time{ std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()) };
+    auto duration{ time.time_since_epoch().count() };
+    std::srand(1000*rank + duration);
+
+    uint64_t my_throws{ specifics.throws/static_cast<uint32_t>(nodes) };
     uint64_t my_succ_throws{ 0 };
+    uint64_t final_succ_throws{ 0 };
+    double   pi{ 0.0 };
     for (uint32_t i{ 0 }; i <= my_throws; i++) {
         double point[2]{
-          static_cast<double>(rand())/static_cast<double>(RAND_MAX),
-          static_cast<double>(rand())/static_cast<double>(RAND_MAX) };
-        std::cout << "(" << point[0] << ", " << point[1] << ")";
-        if ( std::sqrt(std::pow(point[0], 2) + std::pow(point[1], 2)) <= 1.0 ) {
+          static_cast<double>(std::rand())/static_cast<double>(RAND_MAX),
+          static_cast<double>(std::rand())/static_cast<double>(RAND_MAX) };
+        //std::cout << "(" << point[0] << ", " << point[1] << ")\n";
+        if ( std::pow(point[0], 2) + std::pow(point[1], 2) <= 1.0 ) {
             my_succ_throws++;
         }
     }
 
-    std::cout << "Your successful throws are " << my_succ_throws << "\n";
+    MPI_Reduce(
+        reinterpret_cast<void*>(&my_succ_throws),
+        reinterpret_cast<void*>(&final_succ_throws),
+        1,
+        MPI_UNSIGNED_LONG_LONG,
+        MPI_SUM,
+        0,
+        MPI_COMM_WORLD);
 
-    uint64_t n{ 0 };
     if (rank == 0) {
-        uint64_t received_throws{ 0 };
-        while (1 + std::pow(2.0, static_cast<float>(n)) < options.nodes) {
-            MPI_Status status;
-            MPI_Recv(
-                reinterpret_cast<void*>(&received_throws),
-                1,
-                MPI_UNSIGNED_LONG_LONG,
-                1,
-                0,
-                MPI_COMM_WORLD,
-                &status);
-        };
-        my_succ_throws += received_throws;
-
-        std::cout << "Total successful throws are: " << my_succ_throws << "\n";
-    } else {
-        MPI_Send(
-            reinterpret_cast<void*>(&my_succ_throws),
-            1,
-            MPI_UNSIGNED_LONG_LONG,
-            rank - 1,
-            0,
-            MPI_COMM_WORLD);
-        while (1 + static_cast<uint32_t>(std::pow(2.0, static_cast<float>(n))) < options.nodes) {
-            std::cout << "Currently at n = " << n << "\n";
-            auto dest_rank{ rank - static_cast<uint32_t>(std::pow(2.0, static_cast<float>(n))) >= 0
-              ? rank - static_cast<uint32_t>(std::pow(2.0, static_cast<float>(n)))
-              : 0};
-            auto source_rank{ rank + static_cast<uint32_t>(std::pow(2.0, static_cast<float>(n))) < options.nodes
-              ? rank + static_cast<uint32_t>(std::pow(2.0, static_cast<float>(n)))
-              : options.nodes - 1};
-
-            uint64_t received_throws{ 0 };
-            MPI_Status status;
-            MPI_Recv(
-                reinterpret_cast<void*>(&received_throws),
-                1,
-                MPI_UNSIGNED_LONG_LONG,
-                source_rank,
-                0,
-                MPI_COMM_WORLD,
-                &status);
-            my_succ_throws += received_throws;
-            MPI_Send(
-                reinterpret_cast<void*>(&my_succ_throws),
-                1,
-                MPI_UNSIGNED_LONG_LONG,
-                dest_rank,
-                0,
-                MPI_COMM_WORLD);
-        }
+        pi = 4.0*static_cast<double>(final_succ_throws)/static_cast<double>(specifics.throws);
     }
 
-    return;
+    return utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>{
+        .pi{ pi },
+    };
 }

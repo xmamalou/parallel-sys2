@@ -23,10 +23,10 @@
 #include "types.hxx"
 
 namespace exe {
-  auto pi_monte_carlo(const utility::Options&) -> void;
-  auto game_of_life(const utility::Options&) -> void;
-  auto game_of_life_async(const utility::Options&) -> void;
-  auto game_of_life_mix(const utility::Options&) -> void;
+  auto pi_monte_carlo(const utility::Options&) -> utility::ExerciseVariantReturn;
+  auto game_of_life(const utility::Options&) -> utility::ExerciseVariantReturn;
+  auto game_of_life_async(const utility::Options&) -> utility::ExerciseVariantReturn;
+  auto game_of_life_mix(const utility::Options&) -> utility::ExerciseVariantReturn;
 }
 
 #endif /* _EXERCISES_HXX_ */
