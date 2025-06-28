@@ -72,10 +72,10 @@ auto main(int argc, char** argv) -> int {
 
     const auto& command = reinterpret_cast<utility::Command>(options.command_p);
     auto return_value = command(options);
-    std::visit([&](auto& value){
-      using return_t = std::decay_t<decltype(value)>;
+    if (rank == 0) {
+      std::visit([&](auto& value){
+        using return_t = std::decay_t<decltype(value)>;
 
-      if (rank == 0) {
         std::ofstream file;
         file.open("out.txt", std::ios::ate);
         if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>>) {
@@ -88,8 +88,8 @@ auto main(int argc, char** argv) -> int {
 
         }
         file.close();
-      }
-    }, return_value);
+      }, return_value);
+    }
   } catch (utility::Error err) {  
     if (rank == 0) {
       switch (err.error) {
