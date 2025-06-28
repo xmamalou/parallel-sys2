@@ -79,7 +79,7 @@ auto main(int argc, char** argv) -> int {
         std::ofstream file;
         file.open("out.txt", std::ios::ate);
         if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>>) {
-          file << "[EXERCISE 1]\nπ = " << value.pi; 
+          file << "[EXERCISE 1]\nπ = " << value.pi << "\ntime = " << value.time; 
         } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE>>) {
 
         } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE_ASYNC>>) {

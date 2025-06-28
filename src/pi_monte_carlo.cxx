@@ -77,9 +77,12 @@ auto exe::pi_monte_carlo(const utility::Options& options) -> utility::ExerciseVa
 
     if (rank == 0) {
         pi = 4.0*static_cast<double>(final_succ_throws)/static_cast<double>(specifics.throws);
+        auto end{ std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()) };
+        duration = (end - time).count();
     }
 
     return utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>{
         .pi{ pi },
+        .time{ duration },
     };
 }
