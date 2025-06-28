@@ -6,7 +6,9 @@ project(parallel_systems_vol1
         LANGUAGES CXX)
 
 set(APP_NAME exe)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fanalyzer")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_COMPILER "mpicxx")
+set(CMAKE_CXX_STANDARD 20)
 
 include_directories(
         src/)
@@ -32,3 +34,5 @@ if (OPENMP_FOUND)
     set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 endif()
 target_link_libraries(${APP_NAME} PRIVATE Threads::Threads)
+target_include_directories(${APP_NAME} PRIVATE /home/cybermantid/.local/share/mpich/include)
+target_link_libraries(${APP_NAME} PRIVATE /home/cybermantid/.local/share/mpich/lib/libmpich.so)
