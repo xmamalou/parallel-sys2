@@ -44,6 +44,7 @@ auto exe::pi_monte_carlo(const utility::Options& options) -> utility::ExerciseVa
         std::cout << R"(--- CALCULATE PI WITH MONTE CARLO METHOD ---
 -> Number of nodes: )" << nodes << R"(
 -> Number of total throws: )" << specifics.throws << R"(
+-> Data is saved in: )" << options.filepath << R"(
 ---------------------------------------------
 )";
     }
@@ -77,9 +78,12 @@ auto exe::pi_monte_carlo(const utility::Options& options) -> utility::ExerciseVa
 
     if (rank == 0) {
         pi = 4.0*static_cast<double>(final_succ_throws)/static_cast<double>(specifics.throws);
+        auto end{ std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()) };
+        duration = (end - time).count();
     }
 
     return utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>{
         .pi{ pi },
+        .time{ duration },
     };
 }

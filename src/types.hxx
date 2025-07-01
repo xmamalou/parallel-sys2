@@ -89,6 +89,8 @@ namespace utility {
   struct Options {
     void*            command_p{ nullptr };
     std::string_view appname{};
+    std::string_view filepath{ "./out.txt" };
+    bool             do_append{ true };
     //
     Exercise         exe{ Exercise::HELP };
     int32_t          nodes{ 1 };
@@ -98,6 +100,7 @@ namespace utility {
   struct Error {
     // --- TYPES --- //
     enum class ErrorCode : int {
+      SHOW_HELP = 0, // not an error, the user just asked for help
       WRONG_COMMAND_ERR = 1,
       WRONG_OPTION_ERR = 2,
       NO_VALUE_ERR = 3,

@@ -49,7 +49,9 @@ struct Argument {
 // --- GLOBALS --- //
 
 const std::vector<Argument> arguments_g{
+  Argument{ "--file", "-f", 'f', ArgumentType::OPTION },
   Argument{ "--throws", "-t", 't', ArgumentType::OPTION },
+  Argument{ "-Fclear", "-Fc", 'c', ArgumentType::FLAG },
 };
 
 // --- FUNCTION DECLARATIONS --- //
@@ -72,19 +74,21 @@ auto main(int argc, char** argv) -> int {
 
     const auto& command = reinterpret_cast<utility::Command>(options.command_p);
     auto return_value = command(options);
+    // The 0th process manages the results here
     if (rank == 0) {
       std::visit([&](auto& value){
         using return_t = std::decay_t<decltype(value)>;
 
         std::ofstream file;
-        file.open("out.txt", std::ios::ate);
-        if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>>) {
-          file << "[EXERCISE 1]\nπ = " << value.pi; 
-        } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE>>) {
+        file.open(options.filepath.data(), std::ios::ate);
+        if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>>) { // PI_MONTE_CARLO result management
+          std::cout << "π is " << value.pi << "! This took " << value.time << "msec to calculate!"; 
+          file << "[EXERCISE 1]\nπ = " << value.pi << "\ntime = " << value.time; 
+        } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE>>) { // GAME_OF_LIFE result management
 
-        } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE_ASYNC>>) {
+        } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE_ASYNC>>) { // GAME_OF_LIFE_ASYNC result management
 
-        } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE_MIX>>) {
+        } else if constexpr (std::is_same_v<return_t, utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE_MIX>>) { // GAME_OF_LIFE_MIX result management
 
         }
         file.close();
@@ -96,7 +100,12 @@ auto main(int argc, char** argv) -> int {
         case utility::Error::ErrorCode::WRONG_COMMAND_ERR:
           std::cout << "\x1b[31mERROR!! Command " << err.erroneous << " is unrecognized!\x1b[0m\n";
         case utility::Error::ErrorCode::NO_VALUE_ERR:
-          std::cout << "\x1b[31mERROR!! No value given for " << err.erroneous << " \x1b[0m\n";
+          std::cout << "\x1b[31mERROR!! No value given for " << err.erroneous << "!\x1b[0m\n";
+          break;
+        case utility::Error::ErrorCode::BAD_VALUE_ERR:
+          std::cout << "\x1b[31mERROR!! " << err.erroneous << " has received a wrong value!\x1b[0m\n";
+          break;
+        case utility::Error::ErrorCode::SHOW_HELP:
           break;
         default:
           std::cout << "\x1b[31mERROR!! ERROR!! ERROR!!\x1b[0m\n";
@@ -126,13 +135,8 @@ auto read_args(int argc, char** argv) -> utility::Options {
     .appname{ std::move(arguments[0]) },
   };
   if (arguments.size() >= 2) {
-    if (arguments[1] == "help") {
-      // Help does not use any other options other than the app name
-      // so we do not need to do anything else. Also, we have already
-      // set the print_help function as the command to run, so we don't
-      // need to set it again
-      return options;
-    } else if (arguments[1] == "run") {
+    if (arguments[1] == "help") throw utility::Error{ "", utility::Error::ErrorCode::SHOW_HELP };
+    else if (arguments[1] == "run") {
       if (arguments.size() < 3) throw utility::Error{ "run", utility::Error::ErrorCode::NO_VALUE_ERR };
 
       auto& exe_num_str{ arguments[2] };
@@ -142,10 +146,7 @@ auto read_args(int argc, char** argv) -> utility::Options {
                                     exe_num_str.data() + exe_num_str.size(),
                                     exe_num);
       if (result.ec == std::errc::invalid_argument ||
-          (exe_num > 4 || exe_num < 1)) {
-        std::cout << "\x1b[31mERROR!! `run` has received an invalid argument: " << exe_num_str << "! This is not an integer from 1 to 4!\x1b[0m\n";
-        return options; // print_help is already set as the command to run
-      }
+          (exe_num > 4 || exe_num < 1)) throw utility::Error{ "run", utility::Error::ErrorCode::BAD_VALUE_ERR };
 
       options.exe = static_cast<utility::Exercise>(exe_num);
       switch (options.exe) {
@@ -154,11 +155,20 @@ auto read_args(int argc, char** argv) -> utility::Options {
           auto pi_opts = utility::ExerciseOptions<utility::Exercise::PI_MONTE_CARLO>{};
           for (uint32_t i{ 3 }; i < argc; i++) {
             auto option = get_option(argv[i]);
-            if (option == '\0') break;
+            if (option == '\0') continue;
             switch (option) {
               case 't':
                 if (i + 1 >= argc) throw utility::Error{ "--throw / -t", utility::Error::ErrorCode::NO_VALUE_ERR };
                 pi_opts.throws = std::atoll(argv[i+1]);
+                i++;
+                break;
+              case 'f':
+                if (i + 1 >= argc) throw utility::Error{ "--file / -f", utility::Error::ErrorCode::NO_VALUE_ERR };
+                options.filepath = argv[i+1];
+                i++;
+                break;
+              case 'c':
+                options.do_append = false;
             }
           }
           options.specifics = std::move(pi_opts);
@@ -204,26 +214,29 @@ run <number>: Execute the <number>th exercise (where <number> an integer from 1 
                                     
 --- AVAILABLE OPTIONS ---
 -> [global]
-  * --nodes <number> | -n <number> : The amount of nodes to run the algo on
+  * --file <path> | -f <path> : The path to save data in [DEFAULT: './out.txt']
 
 -> run
 1 (PI_MONTE_CARLO)
-  * --throws <number> | -t <number> : The amount of throws to perform
+  * --throws <number> | -t <number> : The amount of throws to perform [DEFAULT: 1]
 
 2 (GAME_OF_LIFE)
-  * --generations <number> | -g <number> : The generations to run the game of life for
-  * --matrix <number>x<number> | -m <number>x<number> : The size of the matrix for the game
+  * --generations <number> | -g <number> : The generations to run the game of life for [DEFAULT: 1]
+  * --matrix <number>x<number> | -m <number>x<number> : The size of the matrix for the game [DEFAULT: 2x2]
 
 3 (GAME_OF_LIFE_ASYNC)
-  * --generations <number> | -g <number> : The generations to run the game of life for
-  * --matrix <number>x<number> | -m <number>x<number> : The size of the matrix for the game
+  * --generations <number> | -g <number> : The generations to run the game of life for [DEFAULT: 1]
+  * --matrix <number>x<number> | -m <number>x<number> : The size of the matrix for the game [DEFAULT: 2x2]
 
 4 (GAME_OF_LIFE_MIX)
-  * --generations <number> | -g <number> : The generations to run the game of life for
-  * --matrix <number>x<number> | -m <number>x<number> : The size of the matrix for the game
+  * --generations <number> | -g <number> : The generations to run the game of life for [DEFAULT: 1]
+  * --matrix <number>x<number> | -m <number>x<number> : The size of the matrix for the game [DEFAULT: 2x2]
+  * --jobs <number> | -j <number> : The amount of jobs to use per node [DEFAULT: 1]
 
 --- AVAILABLE FLAGS ---
-(There are no available flags for this exercise)
+-> [global]
+  * -Fclear | -Fc : If this flag is set, the file specified by `--file <path>` (or the default one) is 
+    overwritten instead of having data appended to. [DEFAULT: data is appended to file]
 )" << "\x1b[0m";
 
   return utility::ExerciseReturn<utility::Exercise::HELP>{};
