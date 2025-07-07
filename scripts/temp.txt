@@ -1,0 +1,12 @@
+[EXERCISE 1]
+π = 3.14117
+time = 40
+[EXERCISE 1]
+π = 3.1418
+time = 42
+[EXERCISE 1]
+π = 3.14278
+time = 44
+[EXERCISE 1]
+π = 3.14146
+time = 40
