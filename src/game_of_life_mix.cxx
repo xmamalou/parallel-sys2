@@ -62,18 +62,22 @@ auto exe::game_of_life_mix(const utility::Options &options)
 
     // we generate the matrix in process 0 to broadcast it afterwards to the
     // other processes
-    for (uint32_t i{0}; i < matrix.size<0>(); i++) {
-#pragma omp parallel for num_threads(specifics.jobs)
-      for (uint32_t j = 0; j < matrix.size<1>(); j++) {
-        const auto time{std::chrono::time_point_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now())};
-        const auto duration{time.time_since_epoch().count()};
-        std::srand(duration);
+#pragma omp parallel num_threads(specifics.jobs)
+    {
+      for (uint32_t i{0}; i < matrix.size<0>(); i++) {
+#pragma omp for
+        for (uint32_t j = 0; j < matrix.size<1>(); j++) {
+          const auto time{
+              std::chrono::time_point_cast<std::chrono::milliseconds>(
+                  std::chrono::system_clock::now())};
+          const auto duration{time.time_since_epoch().count()};
+          std::srand(duration);
 
-        auto value{static_cast<double>(std::rand()) /
-                   static_cast<double>(RAND_MAX)};
+          auto value{static_cast<double>(std::rand()) /
+                     static_cast<double>(RAND_MAX)};
 
-        matrix(i, j) = static_cast<short>(value <= 0.5);
+          matrix(i, j) = static_cast<short>(value <= 0.5);
+        }
       }
     }
   }
@@ -93,7 +97,7 @@ auto exe::game_of_life_mix(const utility::Options &options)
       const auto my_right{
           rank == 0 ? 0 : (rank - 1) * my_elem_count % matrix.size<0>()};
 
-#pragma omp parallel for
+#pragma omp for
       for (uint32_t i = 0; i < my_elem_count; i++) {
         auto x{(my_right + i) % matrix.size<0>()},
             y{(my_right + i) / matrix.size<0>()};
