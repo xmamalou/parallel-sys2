@@ -86,7 +86,7 @@ auto exe::game_of_life(const utility::Options &options)
                                    matrix.size<Dim::Y>() / nodes};
 
   std::vector<uint32_t> top(nodes), left(nodes), bottom(nodes), right(nodes),
-      upper_col(nodes), lower_col(nodes), chunk_size(nodes);
+      upper_col(nodes), lower_col(nodes), chunk_size(nodes), elem_count(nodes);
 
   for (uint32_t i{0}; i < nodes; i++) {
     top[i] = i == 0 ? 0
@@ -98,15 +98,18 @@ auto exe::game_of_life(const utility::Options &options)
                            matrix.size<Dim::X>(); // The X coordinate of the
                                                   // first element of the node
     bottom[i] = i == nodes - 1
-                    ? matrix.size<Dim::Y>()
+                    ? matrix.size<Dim::Y>() - 1
                     : i * per_node_elem_count /
                           matrix.size<Dim::X>(); // The Y coordinate of the last
                                                  // element of the node
     right[i] = i == nodes - 1
-                   ? matrix.size<Dim::X>()
+                   ? matrix.size<Dim::X>() - 1
                    : i * per_node_elem_count %
                          matrix.size<Dim::X>(); // The X coordinate of the last
                                                 // element of the node
+
+    elem_count[i] = (1 + bottom[i] - top[i]) * matrix.size<Dim::X>() - left[i] -
+                    (matrix.size<Dim::X>() - right[i]);
 
     // these two represent the highest and lowest columns that will be sent to
     // the i'th node
@@ -135,15 +138,16 @@ auto exe::game_of_life(const utility::Options &options)
       }
     }
 
+    // we only receive from every node the elements it modifies
     if (rank == 0) {
       for (uint32_t i{1}; i < static_cast<uint32_t>(nodes); i++) {
-        MPI_Recv(reinterpret_cast<void *>(&matrix(0, upper_col[i])),
-                 chunk_size[i], MPI_SHORT, i, 0, MPI_COMM_WORLD,
+        MPI_Recv(reinterpret_cast<void *>(&matrix(top[i], left[i])),
+                 elem_count[i], MPI_SHORT, i, 0, MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
       }
     } else {
-      MPI_Send(reinterpret_cast<void *>(&matrix(0, upper_col[rank])),
-               chunk_size[rank], MPI_SHORT, 0, 0, MPI_COMM_WORLD);
+      MPI_Send(reinterpret_cast<void *>(&matrix(top[rank], left[rank])),
+               elem_count[rank], MPI_SHORT, 0, 0, MPI_COMM_WORLD);
     }
   }
   const auto end{std::chrono::time_point_cast<std::chrono::milliseconds>(
