@@ -84,36 +84,82 @@ auto exe::game_of_life_mix(const utility::Options &options)
 
 #pragma omp parallel num_threads(specifics.jobs)
   {
-    for (uint32_t i{0}; i < specifics.generations; i++) {
-#pragma omp single
-      MPI_Bcast(reinterpret_cast<void *>(const_cast<short *>(matrix.data())),
-                matrix.size<0>() * matrix.size<1>(), MPI_SHORT, 0,
-                MPI_COMM_WORLD);
-
+    for (uint32_t gen{0}; gen < specifics.generations; gen++) {
       // we want the memory each process will get to be continguous
-      const auto my_elem_count{matrix.size<0>() * matrix.size<1>() / nodes};
-      const auto my_top{
-          rank == 0 ? 0 : (rank - 1) * my_elem_count / matrix.size<0>()};
-      const auto my_right{
-          rank == 0 ? 0 : (rank - 1) * my_elem_count % matrix.size<0>()};
+      // This is node independent and can be useful so node 0 can figure out
+      // how big of a chunk to send to each other node;
+      const auto &&per_node_elem_count{matrix.size<0>() * matrix.size<1>() /
+                                       nodes};
+      const auto &&my_top{
+          rank == 0 ? 0 : (rank - 1) * per_node_elem_count / matrix.size<0>()};
+      const auto &&my_right{
+          rank == 0 ? 0 : (rank - 1) * per_node_elem_count % matrix.size<0>()};
+      const auto &&my_bottom{rank * per_node_elem_count / matrix.size<0>()};
+
+      // these two represent the highest and lowest columns that will be sent to
+      // the i'th node
+      const auto &&my_upper_col{my_top == 0 ? 0 : my_top - 1};
+      const auto &&my_lower_col{my_bottom == matrix.size<1>() ? matrix.size<1>()
+                                                              : my_bottom + 1};
+
+      const auto &&recv_elem_count{(my_lower_col - my_upper_col) *
+                                   matrix.size<0>()};
+
+      if (rank == 0) {
+#pragma omp for
+        for (uint32_t i = 1; i < static_cast<uint32_t>(nodes); i++) {
+          const auto &&its_top{(i - 1) * per_node_elem_count /
+                               matrix.size<0>()};
+          const auto &&its_bottom{i * per_node_elem_count / matrix.size<0>()};
+          // these two represent the highest and lowest columns that will be
+          // sent to the i'th node
+          const auto &&its_upper_col{its_top == 0 ? 0 : its_top - 1};
+          const auto &&its_lower_col{its_bottom == matrix.size<1>()
+                                         ? matrix.size<1>()
+                                         : its_bottom + 1};
+
+          const auto &&sent_elem_count{(its_lower_col - its_upper_col) *
+                                       matrix.size<0>()};
+          MPI_Send(reinterpret_cast<void *>(&matrix(0, its_upper_col)),
+                   sent_elem_count, MPI_SHORT, i, 0, MPI_COMM_WORLD);
+        }
+      } else {
+#pragma omp single
+        MPI_Recv(reinterpret_cast<void *>(&matrix(0, my_upper_col)),
+                 recv_elem_count, MPI_SHORT, 0, 0, MPI_COMM_WORLD,
+                 MPI_STATUS_IGNORE);
+      }
 
 #pragma omp for
-      for (uint32_t i = 0; i < my_elem_count; i++) {
+      for (uint32_t i = 0; i < per_node_elem_count; i++) {
         auto x{(my_right + i) % matrix.size<0>()},
             y{(my_right + i) / matrix.size<0>()};
         matrix(x, y) = static_cast<short>(gol_check(matrix, x, y));
       }
 
-      if (rank != 0) {
-#pragma omp single
-        MPI_Gather(reinterpret_cast<void *>(&matrix(my_right, my_top)),
-                   my_elem_count, MPI_SHORT, nullptr, 0, MPI_SHORT, 0,
-                   MPI_COMM_WORLD);
+      if (rank == 0) {
+#pragma omp for
+        for (uint32_t i = 1; i < static_cast<uint32_t>(nodes); i++) {
+          const auto &&its_top{(i - 1) * per_node_elem_count /
+                               matrix.size<0>()};
+          const auto &&its_bottom{i * per_node_elem_count / matrix.size<0>()};
+          // these two represent the highest and lowest columns that will be
+          // sent to the i'th node
+          const auto &&its_upper_col{its_top == 0 ? 0 : its_top - 1};
+          const auto &&its_lower_col{its_bottom == matrix.size<1>()
+                                         ? matrix.size<1>()
+                                         : its_bottom + 1};
+
+          const auto &&sent_elem_count{(its_lower_col - its_upper_col) *
+                                       matrix.size<0>()};
+          MPI_Recv(reinterpret_cast<void *>(&matrix(0, its_upper_col)),
+                   sent_elem_count, MPI_SHORT, i, 0, MPI_COMM_WORLD,
+                   MPI_STATUS_IGNORE);
+        }
       } else {
 #pragma omp single
-        MPI_Gather(nullptr, 0, MPI_SHORT,
-                   reinterpret_cast<void *>(&matrix(my_right, my_top)),
-                   my_elem_count, MPI_SHORT, 0, MPI_COMM_WORLD);
+        MPI_Send(reinterpret_cast<void *>(&matrix(0, my_upper_col)),
+                 recv_elem_count, MPI_SHORT, 0, 0, MPI_COMM_WORLD);
       }
 
 #pragma omp barrier

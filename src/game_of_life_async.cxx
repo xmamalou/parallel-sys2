@@ -75,38 +75,80 @@ auto exe::game_of_life_async(const utility::Options &options)
     }
   }
 
-  MPI_Request gather_request;
-  for (uint32_t i{0}; i < specifics.generations; i++) {
-    MPI_Request bcast_request;
-    MPI_Ibcast(reinterpret_cast<void *>(const_cast<short *>(matrix.data())),
-               matrix.size<0>() * matrix.size<1>(), MPI_SHORT, 0,
-               MPI_COMM_WORLD, &bcast_request);
-
+  std::vector<MPI_Request> send_req(nodes), recv_req(nodes);
+  for (uint32_t gen{0}; gen < specifics.generations; gen++) {
     // we want the memory each process will get to be continguous
-    const auto my_elem_count{matrix.size<0>() * matrix.size<1>() / nodes};
-    const auto my_top{
-        rank == 0 ? 0 : (rank - 1) * my_elem_count / matrix.size<0>()};
-    const auto my_right{
-        rank == 0 ? 0 : (rank - 1) * my_elem_count % matrix.size<0>()};
+    // This is node independent and can be useful so node 0 can figure out
+    // how big of a chunk to send to each other node;
+    const auto &&per_node_elem_count{matrix.size<0>() * matrix.size<1>() /
+                                     nodes};
+    const auto &&my_top{
+        rank == 0 ? 0 : (rank - 1) * per_node_elem_count / matrix.size<0>()};
+    const auto &&my_right{
+        rank == 0 ? 0 : (rank - 1) * per_node_elem_count % matrix.size<0>()};
+    const auto &&my_bottom{rank * per_node_elem_count / matrix.size<0>()};
 
-    MPI_Wait(&bcast_request, MPI_STATUS_IGNORE);
-    for (uint32_t i{0}; i < my_elem_count; i++) {
+    // these two represent the highest and lowest columns that will be sent to
+    // the i'th node
+    const auto &&my_upper_col{my_top == 0 ? 0 : my_top - 1};
+    const auto &&my_lower_col{my_bottom == matrix.size<1>() ? matrix.size<1>()
+                                                            : my_bottom + 1};
+
+    const auto &&recv_elem_count{(my_lower_col - my_upper_col) *
+                                 matrix.size<0>()};
+
+    if (rank == 0) {
+      for (uint32_t i{1}; i < static_cast<uint32_t>(nodes); i++) {
+        const auto &&its_top{(i - 1) * per_node_elem_count / matrix.size<0>()};
+        const auto &&its_bottom{i * per_node_elem_count / matrix.size<0>()};
+        // these two represent the highest and lowest columns that will be sent
+        // to the i'th node
+        const auto &&its_upper_col{its_top == 0 ? 0 : its_top - 1};
+        const auto &&its_lower_col{
+            its_bottom == matrix.size<1>() ? matrix.size<1>() : its_bottom + 1};
+
+        const auto &&sent_elem_count{(its_lower_col - its_upper_col) *
+                                     matrix.size<0>()};
+        MPI_Isend(reinterpret_cast<void *>(&matrix(0, its_upper_col)),
+                  sent_elem_count, MPI_SHORT, i, 0, MPI_COMM_WORLD,
+                  &send_req[i]);
+      }
+    } else {
+      if (gen != 0) // first generation WON'T have valid send requests
+        MPI_Wait(&send_req[0], MPI_STATUS_IGNORE);
+      MPI_Irecv(reinterpret_cast<void *>(&matrix(0, my_upper_col)),
+                recv_elem_count, MPI_SHORT, 0, 0, MPI_COMM_WORLD, &recv_req[0]);
+    }
+
+    if (rank != 0)
+      MPI_Wait(&recv_req[0], MPI_STATUS_IGNORE);
+    for (uint32_t i{0}; i < per_node_elem_count; i++) {
       auto x{(my_right + i) % matrix.size<0>()},
           y{(my_right + i) / matrix.size<0>()};
       matrix(x, y) = static_cast<short>(gol_check(matrix, x, y));
     }
 
-    if (rank != 0) {
-      MPI_Igather(reinterpret_cast<void *>(&matrix(my_right, my_top)),
-                  my_elem_count, MPI_SHORT, nullptr, 0, MPI_SHORT, 0,
-                  MPI_COMM_WORLD, &gather_request);
-    } else {
-      MPI_Igather(nullptr, 0, MPI_SHORT,
-                  reinterpret_cast<void *>(&matrix(my_right, my_top)),
-                  my_elem_count, MPI_SHORT, 0, MPI_COMM_WORLD, &gather_request);
-    }
+    if (rank == 0) {
+      for (uint32_t i{1}; i < static_cast<uint32_t>(nodes); i++) {
+        const auto &&its_top{(i - 1) * per_node_elem_count / matrix.size<0>()};
+        const auto &&its_bottom{i * per_node_elem_count / matrix.size<0>()};
+        // these two represent the highest and lowest columns that will be sent
+        // to the i'th node
+        const auto &&its_upper_col{its_top == 0 ? 0 : its_top - 1};
+        const auto &&its_lower_col{
+            its_bottom == matrix.size<1>() ? matrix.size<1>() : its_bottom + 1};
 
-    MPI_Wait(&gather_request, MPI_STATUS_IGNORE);
+        const auto &&sent_elem_count{(its_lower_col - its_upper_col) *
+                                     matrix.size<0>()};
+        MPI_Wait(&send_req[i], MPI_STATUS_IGNORE);
+        MPI_Irecv(reinterpret_cast<void *>(&matrix(0, its_upper_col)),
+                  sent_elem_count, MPI_SHORT, i, 0, MPI_COMM_WORLD,
+                  &recv_req[i]);
+      }
+    } else {
+      MPI_Isend(reinterpret_cast<void *>(&matrix(0, my_upper_col)),
+                recv_elem_count, MPI_SHORT, 0, 0, MPI_COMM_WORLD, &send_req[0]);
+    }
   }
   const auto end{std::chrono::time_point_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now())};
