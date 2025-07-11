@@ -20,15 +20,14 @@
 #include "exercises.hxx"
 
 #include <chrono>
-#include <cmath>
 #include <iostream>
+#include <thread>
 
 #include "mpi.h"
 
-// --- FUNCTION DECLARATIONS --- //
+#include "game_of_life_common.hxx"
 
-auto gol_check(utility::Matrix<short> &neighborhood, const uint32_t at_x,
-               const uint32_t at_y) -> bool;
+using Dim = utility::Matrix<short>::Dim;
 
 // --- FUNCTION DEFINITIONS --- //
 
@@ -63,8 +62,8 @@ auto exe::game_of_life(const utility::Options &options)
 
     // we generate the matrix in process 0 to broadcast it afterwards to the
     // other processes
-    for (uint32_t i{0}; i < matrix.size<0>(); i++) {
-      for (uint32_t j{0}; j < matrix.size<1>(); j++) {
+    for (uint32_t i{0}; i < matrix.size<Dim::Y>(); i++) {
+      for (uint32_t j{0}; j < matrix.size<Dim::X>(); j++) {
         const auto time{std::chrono::time_point_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now())};
         const auto duration{time.time_since_epoch().count()};
@@ -73,78 +72,78 @@ auto exe::game_of_life(const utility::Options &options)
         auto value{static_cast<double>(std::rand()) /
                    static_cast<double>(RAND_MAX)};
 
-        matrix(i, j) = static_cast<short>(value <= 0.5);
+        matrix(j, i) = static_cast<short>(
+            value <= 0.35); // per the C++ standard, `true` coerces to value 1
+                            // and `false` to value 0
       }
     }
   }
 
-  for (uint32_t gen{0}; gen < specifics.generations; gen++) {
-    // we want the memory each process will get to be continguous
-    // This is node independent and can be useful so node 0 can figure out
-    // how big of a chunk to send to each other node;
-    const auto &&per_node_elem_count{matrix.size<0>() * matrix.size<1>() /
-                                     nodes};
-    const auto &&my_top{
-        rank == 0 ? 0 : (rank - 1) * per_node_elem_count / matrix.size<0>()};
-    const auto &&my_right{
-        rank == 0 ? 0 : (rank - 1) * per_node_elem_count % matrix.size<0>()};
-    const auto &&my_bottom{rank * per_node_elem_count / matrix.size<0>()};
+  // This does NOT represent how many elements each node will handle, as `nodes`
+  // may not divide the matrix size, however it's a helpful intermediate
+  // variable
+  const auto &&per_node_elem_count{matrix.size<Dim::X>() *
+                                   matrix.size<Dim::Y>() / nodes};
+
+  std::vector<uint32_t> top(nodes), left(nodes), bottom(nodes), right(nodes),
+      upper_col(nodes), lower_col(nodes), chunk_size(nodes);
+
+  for (uint32_t i{0}; i < nodes; i++) {
+    top[i] = i == 0 ? 0
+                    : (i - 1) * per_node_elem_count /
+                          matrix.size<Dim::X>(); // The Y coordinate of the
+                                                 // first element of the node
+    left[i] = i == 0 ? 0
+                     : (i - 1) * per_node_elem_count %
+                           matrix.size<Dim::X>(); // The X coordinate of the
+                                                  // first element of the node
+    bottom[i] = i == nodes - 1
+                    ? matrix.size<Dim::Y>()
+                    : i * per_node_elem_count /
+                          matrix.size<Dim::X>(); // The Y coordinate of the last
+                                                 // element of the node
+    right[i] = i == nodes - 1
+                   ? matrix.size<Dim::X>()
+                   : i * per_node_elem_count %
+                         matrix.size<Dim::X>(); // The X coordinate of the last
+                                                // element of the node
 
     // these two represent the highest and lowest columns that will be sent to
     // the i'th node
-    const auto &&my_upper_col{my_top == 0 ? 0 : my_top - 1};
-    const auto &&my_lower_col{my_bottom == matrix.size<1>() ? matrix.size<1>()
-                                                            : my_bottom + 1};
+    upper_col[i] = top[i] == 0 ? top[i] : top[i] - 1;
+    lower_col[i] =
+        bottom[i] == matrix.size<Dim::Y>() - 1 ? bottom[i] : bottom[i] + 1;
 
-    const auto &&recv_elem_count{(my_lower_col - my_upper_col) *
-                                 matrix.size<0>()};
+    chunk_size[i] = (lower_col[i] - upper_col[i]) * matrix.size<Dim::X>();
+  }
 
+  for (uint32_t gen{0}; gen < specifics.generations; gen++) {
     if (rank == 0) {
       for (uint32_t i{1}; i < static_cast<uint32_t>(nodes); i++) {
-        const auto &&its_top{(i - 1) * per_node_elem_count / matrix.size<0>()};
-        const auto &&its_bottom{i * per_node_elem_count / matrix.size<0>()};
-        // these two represent the highest and lowest columns that will be sent
-        // to the i'th node
-        const auto &&its_upper_col{its_top == 0 ? 0 : its_top - 1};
-        const auto &&its_lower_col{
-            its_bottom == matrix.size<1>() ? matrix.size<1>() : its_bottom + 1};
-
-        const auto &&sent_elem_count{(its_lower_col - its_upper_col) *
-                                     matrix.size<0>()};
-        MPI_Send(reinterpret_cast<void *>(&matrix(0, its_upper_col)),
-                 sent_elem_count, MPI_SHORT, i, 0, MPI_COMM_WORLD);
+        MPI_Send(reinterpret_cast<void *>(&matrix(0, upper_col[i])),
+                 chunk_size[i], MPI_SHORT, i, 0, MPI_COMM_WORLD);
       }
     } else {
-      MPI_Recv(reinterpret_cast<void *>(&matrix(0, my_upper_col)),
-               recv_elem_count, MPI_SHORT, 0, 0, MPI_COMM_WORLD,
+      MPI_Recv(reinterpret_cast<void *>(&matrix(0, upper_col[rank])),
+               chunk_size[rank], MPI_SHORT, 0, 0, MPI_COMM_WORLD,
                MPI_STATUS_IGNORE);
     }
 
-    for (uint32_t i{0}; i < per_node_elem_count; i++) {
-      auto x{(my_right + i) % matrix.size<0>()},
-          y{(my_right + i) / matrix.size<0>()};
-      matrix(x, y) = static_cast<short>(gol_check(matrix, x, y));
+    for (uint32_t i{top[rank]}; i < bottom[rank]; i++) {
+      for (uint32_t j{left[rank]}; j < right[rank]; j++) {
+        matrix(j, i) = static_cast<short>(gol::check(matrix, j, i));
+      }
     }
 
     if (rank == 0) {
       for (uint32_t i{1}; i < static_cast<uint32_t>(nodes); i++) {
-        const auto &&its_top{(i - 1) * per_node_elem_count / matrix.size<0>()};
-        const auto &&its_bottom{i * per_node_elem_count / matrix.size<0>()};
-        // these two represent the highest and lowest columns that will be sent
-        // to the i'th node
-        const auto &&its_upper_col{its_top == 0 ? 0 : its_top - 1};
-        const auto &&its_lower_col{
-            its_bottom == matrix.size<1>() ? matrix.size<1>() : its_bottom + 1};
-
-        const auto &&sent_elem_count{(its_lower_col - its_upper_col) *
-                                     matrix.size<0>()};
-        MPI_Recv(reinterpret_cast<void *>(&matrix(0, its_upper_col)),
-                 sent_elem_count, MPI_SHORT, i, 0, MPI_COMM_WORLD,
+        MPI_Recv(reinterpret_cast<void *>(&matrix(0, upper_col[i])),
+                 chunk_size[i], MPI_SHORT, i, 0, MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
       }
     } else {
-      MPI_Send(reinterpret_cast<void *>(&matrix(0, my_upper_col)),
-               recv_elem_count, MPI_SHORT, 0, 0, MPI_COMM_WORLD);
+      MPI_Send(reinterpret_cast<void *>(&matrix(0, upper_col[rank])),
+               chunk_size[rank], MPI_SHORT, 0, 0, MPI_COMM_WORLD);
     }
   }
   const auto end{std::chrono::time_point_cast<std::chrono::milliseconds>(
@@ -154,32 +153,4 @@ auto exe::game_of_life(const utility::Options &options)
       .time{static_cast<uint64_t>((end - start).count())},
       .dims{specifics.dims[0], specifics.dims[1]},
   };
-}
-
-inline auto gol_check(utility::Matrix<short> &neighborhood, const uint32_t at_x,
-                      const uint32_t at_y) -> bool {
-  const auto &&right{at_x > 0 ? at_x - 1 : at_x};
-  const auto &&top{at_y > 0 ? at_y - 1 : at_y};
-  const auto &&left{at_x < neighborhood.size<0>() - 1 ? at_x + 1 : at_x};
-  const auto &&bottom{at_y < neighborhood.size<1>() - 1 ? at_y + 1 : at_y};
-
-  uint32_t alive_neighbors{0};
-  for (uint32_t i{right}; i <= left; i++) {
-    for (uint32_t j{top}; j <= bottom; j++) {
-      if (i == at_x || j == at_y)
-        continue;
-
-      if (neighborhood(i, j) == 1)
-        alive_neighbors++;
-    }
-  }
-
-  switch (alive_neighbors) {
-  case 3:
-    return true;
-  case 2:
-    return static_cast<bool>(neighborhood(at_x, at_y));
-  default:
-    return false;
-  }
 }

@@ -117,6 +117,11 @@ template <typename T> class Matrix {
   const uint32_t dims[2]{2, 2};
 
 public:
+  enum class Dim : uint32_t {
+    X = 0,
+    Y = 1,
+  };
+
   Matrix(const uint32_t x, const uint32_t y)
       : vector(std::vector<T>(x * y)), dims{x, y} {}
 
@@ -124,10 +129,8 @@ public:
     return this->vector[i + this->dims[0] * j];
   }
 
-  template <uint32_t dim> auto size() const noexcept -> uint32_t {
-    static_assert(dim < 2);
-
-    return this->dims[dim];
+  template <Dim dim> auto size() const noexcept -> uint32_t {
+    return this->dims[static_cast<uint32_t>(dim)];
   }
 
   auto data() const noexcept { return this->vector.data(); }
