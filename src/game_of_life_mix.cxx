@@ -45,20 +45,6 @@ auto exe::game_of_life_mix(const utility::Options &options)
   const auto start{std::chrono::time_point_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now())};
   if (rank == 0) {
-    std::cout << R"(--- GAME OF LIFE ---
--> Number of nodes: )"
-              << nodes << R"(
--> Number of generations: )"
-              << specifics.generations << R"(
--> Matrix size is: )"
-              << specifics.dims[0] << R"(x)" << specifics.dims[1] << R"(
--> Jobs per node are: )"
-              << specifics.jobs << R"(
--> Data is saved in: )"
-              << options.filepath << R"(
--------------------
-)";
-
     // we generate the matrix in process 0 to broadcast it afterwards to the
     // other processes
 #pragma omp parallel num_threads(specifics.jobs)

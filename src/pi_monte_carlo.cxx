@@ -39,18 +39,6 @@ auto exe::pi_monte_carlo(const utility::Options &options)
     MPI_Comm_size(MPI_COMM_WORLD, &nodes);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-    if (rank == 0) {
-        std::cout << R"(--- CALCULATE PI WITH MONTE CARLO METHOD ---
--> Number of nodes: )"
-                  << nodes << R"(
--> Number of total throws: )"
-                  << specifics.throws << R"(
--> Data is saved in: )"
-                  << options.filepath << R"(
----------------------------------------------
-)";
-    }
-
     auto time{std::chrono::time_point_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now())};
     auto duration{time.time_since_epoch().count()};

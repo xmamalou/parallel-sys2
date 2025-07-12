@@ -46,6 +46,13 @@ struct Argument {
   ArgumentType type{ArgumentType::OPTION};
 };
 
+using PiMCOptions = utility::ExerciseOptions<utility::Exercise::PI_MONTE_CARLO>;
+using GoLOptions = utility::ExerciseOptions<utility::Exercise::GAME_OF_LIFE>;
+using GoLAsyncOptions =
+    utility::ExerciseOptions<utility::Exercise::GAME_OF_LIFE_ASYNC>;
+using GoLMixOptions =
+    utility::ExerciseOptions<utility::Exercise::GAME_OF_LIFE_MIX>;
+
 using PiMCReturn = utility::ExerciseReturn<utility::Exercise::PI_MONTE_CARLO>;
 using GoLReturn = utility::ExerciseReturn<utility::Exercise::GAME_OF_LIFE>;
 using GoLAsyncReturn =
@@ -83,8 +90,72 @@ auto main(int argc, char **argv) -> int {
   try {
     const auto options = read_args(argc, argv);
 
+    // The 0th process prints the introductory text
+    if (rank == 0) {
+      std::visit(
+          [&](auto &value) {
+            using options_t = std::decay_t<decltype(value)>;
+            int32_t nodes{0};
+            MPI_Comm_size(MPI_COMM_WORLD, &nodes);
+
+            if constexpr (std::is_same_v<options_t, PiMCOptions>) {
+              std::cout << R"(--- CALCULATE PI WITH MONTE CARLO METHOD ---
+-> Number of nodes: )" << nodes
+                        << R"(
+-> Number of total throws: )"
+                        << value.throws << R"(
+-> Data is saved in: )" << options.filepath
+                        << R"(
+---------------------------------------------
+)";
+            } else if constexpr (std::is_same_v<options_t, GoLOptions>) {
+              std::cout << R"(--- GAME OF LIFE ---
+-> Number of nodes: )" << nodes
+                        << R"(
+-> Number of generations: )"
+                        << value.generations << R"(
+-> Matrix size is: )" << value.dims[0]
+                        << R"(x)" << value.dims[1] << R"(
+-> Data is saved in: )" << options.filepath
+                        << R"(
+-------------------
+)";
+            } else if constexpr (std::is_same_v<options_t, GoLAsyncOptions>) {
+              std::cout << R"(--- GAME OF LIFE ---
+-> Number of nodes: )" << nodes
+                        << R"(
+-> Number of generations: )"
+                        << value.generations << R"(
+-> Matrix size is: )" << value.dims[0]
+                        << R"(x)" << value.dims[1] << R"(
+-> Data is saved in: )" << options.filepath
+                        << R"(
+-------------------
+)";
+            } else if constexpr (std::is_same_v<options_t, GoLMixOptions>) {
+              std::cout << R"(--- GAME OF LIFE ---
+-> Number of nodes: )" << nodes
+                        << R"(
+-> Number of generations: )"
+                        << value.generations << R"(
+-> Matrix size is: )" << value.dims[0]
+                        << R"(x)" << value.dims[1] << R"(
+-> Jobs per node are: )" << value.jobs
+                        << R"(
+-> Data is saved in: )" << options.filepath
+                        << R"(
+-------------------
+)";
+            }
+          },
+          options.specifics);
+    }
+
+    // Exercise starts here
     const auto &command = reinterpret_cast<utility::Command>(options.command_p);
     auto return_value = command(options);
+    // Exercise ends here
+
     // The 0th process manages the results here
     if (rank == 0) {
       std::visit(
@@ -96,7 +167,7 @@ auto main(int argc, char **argv) -> int {
                 (options.do_append ? std::ios_base::app : std::ios::ate));
             if constexpr (std::is_same_v<return_t, PiMCReturn>) {
               std::cout << "π is " << value.pi << "! This took " << value.time
-                        << "msec to calculate!";
+                        << "msec to calculate!\n";
               file << "[EXERCISE 1]\nπ = " << value.pi
                    << "\ntime = " << value.time << "\n";
             } else if constexpr (!std::is_same_v<return_t, HelpReturn>) {
@@ -107,7 +178,7 @@ auto main(int argc, char **argv) -> int {
                 exe_num = 4;
 
               std::cout << "Finished with the Game of Life! This took "
-                        << value.time << "msec to run!";
+                        << value.time << "msec to run!\n";
               file << "[EXERCISE " << exe_num << "]\ntime = " << value.time
                    << "\ndimensions = " << value.dims[0] << "x" << value.dims[1]
                    << "\n";
