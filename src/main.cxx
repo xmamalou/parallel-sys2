@@ -84,7 +84,7 @@ auto print_help(const utility::Options &) -> utility::ExerciseVariantReturn;
 // --- FUNCTION DEFINITIONS --- //
 
 auto main(int argc, char **argv) -> int {
-  MPI_Init(nullptr, nullptr);
+  MPI_Init_thread(nullptr, nullptr, MPI_THREAD_MULTIPLE, nullptr);
   int32_t rank{0};
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
   try {

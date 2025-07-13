@@ -23,6 +23,7 @@
 #include <iostream>
 
 #include "mpi.h"
+#include <omp.h>
 
 #include "game_of_life_common.hxx"
 
@@ -108,11 +109,12 @@ auto exe::game_of_life_mix(const utility::Options &options)
 #pragma omp parallel num_threads(specifics.jobs)
   for (uint32_t gen{0}; gen < specifics.generations; gen++) {
     if (rank == 0) {
-#pragma omp single
-      for (uint32_t i{1}; i < static_cast<uint32_t>(nodes); i++) {
+#pragma omp for schedule(guided, 4)
+      for (uint32_t i = 1; i < static_cast<uint32_t>(nodes); i++) {
         MPI_Send(reinterpret_cast<void *>(&matrix(0, upper_col[i])),
                  chunk_size[i], MPI_SHORT, i, 0, MPI_COMM_WORLD);
       }
+
     } else {
 #pragma omp single
       MPI_Recv(reinterpret_cast<void *>(&matrix(0, upper_col[rank])),
@@ -120,7 +122,7 @@ auto exe::game_of_life_mix(const utility::Options &options)
                MPI_STATUS_IGNORE);
     }
 
-#pragma omp for schedule(dynamic, 1)
+#pragma omp for
     for (uint32_t i = top[rank]; i < bottom[rank]; i++) {
       for (uint32_t j = left[rank]; j < right[rank]; j++) {
         matrix(j, i) = static_cast<short>(gol::check(matrix, j, i));
@@ -129,17 +131,19 @@ auto exe::game_of_life_mix(const utility::Options &options)
 
     // we only receive from every node the elements it modifies
     if (rank == 0) {
-#pragma omp single
-      for (uint32_t i{1}; i < static_cast<uint32_t>(nodes); i++) {
+#pragma omp for schedule(guided, 4)
+      for (uint32_t i = 1; i < static_cast<uint32_t>(nodes); i++) {
         MPI_Recv(reinterpret_cast<void *>(&matrix(top[i], left[i])),
                  elem_count[i], MPI_SHORT, i, 0, MPI_COMM_WORLD,
                  MPI_STATUS_IGNORE);
       }
+
     } else {
 #pragma omp single
       MPI_Send(reinterpret_cast<void *>(&matrix(top[rank], left[rank])),
                elem_count[rank], MPI_SHORT, 0, 0, MPI_COMM_WORLD);
     }
+
 #pragma omp barrier
   }
 
